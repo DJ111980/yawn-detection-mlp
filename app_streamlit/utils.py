@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - handled by the Streamlit UI.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = PROJECT_ROOT / "models"
 METRICS_DIR = PROJECT_ROOT / "metrics"
-IMAGE_SIZE = (64, 64)
+IMAGE_SIZE = (80, 80)
 
 MODEL_CANDIDATES = (
     MODELS_DIR / "best_model",
