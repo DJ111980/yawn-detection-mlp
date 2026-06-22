@@ -97,7 +97,7 @@ Presiona `q` para cerrar la ventana.
 ## Analisis del dataset
 
 ```powershell
-py tools/dataset_summary.py
+python tools/dataset_summary.py
 ```
 
 Genera:
