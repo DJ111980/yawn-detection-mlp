@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sys
-from urllib.parse import urlencode
-from urllib.request import urlopen
 from pathlib import Path
 
 import streamlit as st
@@ -35,25 +32,8 @@ except ImportError:  # pragma: no cover - depende del entorno WSL.
 
 st.set_page_config(page_title="Deteccion de Bostezo", page_icon="camera", layout="wide")
 
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_metered_ice_servers(api_key: str) -> list[dict]:
-    """Obtiene credenciales TURN temporales de Metered sin exponer la API Key en Git."""
-    query = urlencode({"apiKey": api_key})
-    endpoint = f"https://streamlit_app.metered.live/api/v1/turn/credentials?{query}"
-    with urlopen(endpoint, timeout=10) as response:
-        ice_servers = json.loads(response.read().decode("utf-8"))
-    if not isinstance(ice_servers, list) or not ice_servers:
-        raise ValueError("Metered no devolvio servidores ICE validos.")
-    return ice_servers
-
-
 def build_rtc_configuration() -> dict:
-    """Prioriza credenciales TURN dinamicas y conserva STUN para desarrollo local."""
-    try:
-        return {"iceServers": fetch_metered_ice_servers(st.secrets["metered"]["api_key"])}
-    except (KeyError, FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
-        pass
-
+    """Combina STUN publico con TURN privado almacenado fuera del repositorio."""
     configuration = {
         "iceServers": [
             {"urls": ["stun:stun.relay.metered.ca:80"]},
