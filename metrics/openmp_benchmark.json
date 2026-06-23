@@ -1,0 +1,8 @@
+{
+  "measurement_scope": "full_preprocessing_train_validation_and_test_in_memory",
+  "serial_ms": 95.791860,
+  "openmp_ms": 24.346873,
+  "threads": 8,
+  "images": 630,
+  "speedup": 3.934463
+}

@@ -1,171 +1,29 @@
 # Yawn Detection MLP
 
-Sistema de vision artificial para clasificar imagenes en dos clases:
+Clasificador binario de bostezo con imagenes de `64x64`, normalizadas entre `0` y `1` y aplanadas a 4096 caracteristicas. El flujo principal mide el preprocesamiento serial/OpenMP y entrena el mismo MLP en CPU y CUDA con EarlyStopping sobre `val_loss`.
 
-- `1` = yawn
-- `0` = no_yawn
-
-El modelo principal es un MLP implementado con TensorFlow puro, sin Keras. Las imagenes se preprocesan en escala de grises, recorte de boca, suavizado Gaussiano ligero, redimensionamiento a `80x80`, normalizacion de pixeles de `0-255` a `0-1` y vectorizacion a `6400` caracteristicas.
-
-## Estructura
-
-```text
-yawn-detection-mlp/
-|-- datasets/
-|-- notebooks/
-|-- src/
-|-- models/
-|-- metrics/
-|-- docs/
-|-- parallel/
-|-- cuda/
-|-- tools/
-|-- requirements.txt
-|-- environment.yml
-`-- README.md
-```
-
-## Instalacion
-
-Con Miniconda:
+## Ejecutar desde WSL
 
 ```bash
-conda env create -f environment.yml
 conda activate yawn-detection-mlp
-jupyter lab
-```
-
-Tambien se puede instalar con `pip`:
-
-```bash
-pip install -r requirements.txt
-```
-
-## Dataset esperado
-
-```text
-datasets/
-|-- train/
-|   |-- yawn/
-|   `-- no_yawn/
-|-- validation/
-|   |-- yawn/
-|   `-- no_yawn/
-`-- test/
-    |-- yawn/
-    `-- no_yawn/
-```
-
-## Entrenamiento
-
-Desde la raiz del proyecto:
-
-```bash
+cd /mnt/c/Users/USUARIO/Documents/PARALELAS/yawn-detection-mlp
 python -m src.train
+streamlit run app_streamlit/streamlit_app.py
 ```
 
-## Validacion cruzada
+`python -m src.train` es el unico comando de entrenamiento. Prepara el dataset, ejecuta OpenMP, entrena CPU/CUDA, conserva los mejores pesos CUDA segun validacion y genera las metricas. No se requiere ejecutar scripts de entrenamiento separados.
+
+## Resultados
+
+- `metrics/results.md`: accuracy, precision, recall y F1 sobre prueba.
+- `metrics/confusion_matrix.png`: matriz de confusion.
+- `metrics/openmp_benchmark.md` y `metrics/openmp_speedup.png`: serial vs OpenMP.
+- `metrics/cuda_training.md`, `metrics/loss.png`, `metrics/accuracy.png` y `metrics/cuda_speedup.png`: CPU vs CUDA y validacion.
+
+Los archivos JSON de OpenMP y CUDA se conservan solo como fuente de las graficas. Para regenerar visualizaciones y metricas existentes sin entrenar:
 
 ```bash
-python -m src.cross_validation
+python -m tools.refresh_metrics
 ```
 
-## Probar una imagen nueva
-
-```bash
-python -m src.predict_image ruta/a/tu_imagen.jpg
-```
-
-La salida muestra la probabilidad de `yawn` y la clase final.
-
-## Probar con camara
-
-```bash
-python -m src.webcam_demo
-```
-
-Presiona `q` para cerrar la ventana.
-
-## Salidas
-
-- Modelo final exportado con TensorFlow SavedModel: `models/final_model/`
-- Mejor modelo exportado con TensorFlow SavedModel: `models/best_model/`
-- Graficas: `metrics/accuracy.png`, `metrics/loss.png`
-- Matriz de confusion: `metrics/confusion_matrix.png`
-- Resultados: `metrics/results.csv`
-
-## Analisis del dataset
-
-```powershell
-python tools/dataset_summary.py
-```
-
-Genera:
-
-```text
-metrics/dataset_summary.csv
-metrics/dataset_distribution.png
-```
-
-Documento:
-
-```text
-docs/DATASET_ANALYSIS.md
-```
-
-## OpenMP
-
-Preprocesamiento serial y paralelo en C puro con OpenMP:
-
-```powershell
-cd parallel/openmp
-mingw32-make
-.\benchmark_openmp.exe 160 120 5
-cd ..\..
-py parallel/scripts/plot_openmp_speedup.py
-```
-
-Evidencias:
-
-```text
-metrics/openmp_benchmark.csv
-metrics/openmp_speedup.png
-```
-
-## CUDA
-
-Forward pass del MLP con kernels CUDA propios, estilo CUDA C, y benchmark CPU/GPU:
-
-```powershell
-cd cuda
-mingw32-make
-.\benchmark_cuda.exe
-cd ..
-py cuda/plot_cuda_speedup.py
-```
-
-En Windows, `nvcc` puede requerir Visual Studio Build Tools y `cl.exe`. En este proyecto esa configuracion ya quedo resuelta y el benchmark CUDA se ejecuto correctamente.
-
-Evidencias CUDA generadas:
-
-```text
-metrics/cuda_benchmark.csv
-metrics/cuda_speedup.png
-```
-
-Resultado real registrado:
-
-```text
-batch 1  -> speedup 24.585x
-batch 8  -> speedup 358.551x
-batch 16 -> speedup 398.811x
-batch 32 -> speedup 349.470x
-```
-
-## Documentacion academica
-
-```text
-docs/ANALISIS_METRICAS.md
-docs/REPORTE_FINAL_RUBRICA.md
-docs/GUIA_EXPOSICION.md
-```
+La aplicacion Streamlit permite subir una imagen, capturar una foto o usar la camara en vivo. Las tres opciones comparten el mismo preprocesamiento y tarjeta de resultado.

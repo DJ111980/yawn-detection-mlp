@@ -13,3 +13,5 @@ env/
 *.pdb
 *.exp
 *.lib
+artifacts/
+build/

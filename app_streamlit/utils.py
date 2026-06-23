@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -10,159 +11,91 @@ except ImportError:  # pragma: no cover - handled by the Streamlit UI.
     cv2 = None
 
 try:
-    import tensorflow as tf
-except ImportError:  # pragma: no cover - handled by the Streamlit UI.
-    tf = None
-
-try:
-    from src.config import IMAGE_SIZE, PREPROCESSING_STRATEGY
+    from src.config import HIDDEN_LAYER_1, HIDDEN_LAYER_2, IMAGE_SIZE
+    from src.preprocessing import preprocess_image_array as _project_preprocess_image_array
 except ImportError:  # pragma: no cover - fallback for isolated execution.
-    IMAGE_SIZE = (80, 80)
-    PREPROCESSING_STRATEGY = "lower_face"
-
-if cv2 is not None:
-    try:
-        from src.preprocessing import BLUR_KERNEL, _center_crop, crop_lower_face
-    except ImportError:  # pragma: no cover - fallback for isolated execution.
-        BLUR_KERNEL = (3, 3)
-        _center_crop = None
-        crop_lower_face = None
-else:  # pragma: no cover - handled by dependency checks.
-    BLUR_KERNEL = (3, 3)
-    _center_crop = None
-    crop_lower_face = None
+    IMAGE_SIZE = (64, 64)
+    HIDDEN_LAYER_1 = 64
+    HIDDEN_LAYER_2 = 32
+    _project_preprocess_image_array = None
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = PROJECT_ROOT / "models"
-METRICS_DIR = PROJECT_ROOT / "metrics"
-
-MODEL_CANDIDATES = (
-    MODELS_DIR / "best_model",
-    MODELS_DIR / "final_model",
-)
+CUDA_WEIGHTS_PATH = PROJECT_ROOT / "models" / "cuda_weights.bin"
 
 
 class MissingDependencyError(RuntimeError):
-    """Raised when a required runtime dependency is not installed."""
+    """Raised when a runtime dependency needed by the UI is unavailable."""
+
+
+class CudaMlpInference:
+    """Inferencia NumPy con los pesos que produjo el entrenamiento CUDA."""
+
+    def __init__(self, w1, b1, w2, b2, w3, b3):
+        self.w1, self.b1 = w1, b1
+        self.w2, self.b2 = w2, b2
+        self.w3, self.b3 = w3, b3
+
+    def predict(self, input_vector: np.ndarray) -> np.ndarray:
+        hidden_1 = np.maximum(input_vector @ self.w1 + self.b1, 0.0)
+        hidden_2 = np.maximum(hidden_1 @ self.w2 + self.b2, 0.0)
+        logits = hidden_2 @ self.w3 + self.b3
+        return 1.0 / (1.0 + np.exp(-logits))
 
 
 def check_runtime_dependencies() -> list[str]:
-    missing = []
-    if tf is None:
-        missing.append("TensorFlow")
-    if cv2 is None:
-        missing.append("OpenCV")
-    return missing
-
-
-def read_default_threshold() -> float:
-    threshold_path = METRICS_DIR / "best_threshold.txt"
-    if not threshold_path.exists():
-        return 0.5
-
-    try:
-        return float(threshold_path.read_text(encoding="utf-8").strip())
-    except ValueError:
-        return 0.5
+    return ["OpenCV"] if cv2 is None else []
 
 
 def load_trained_model():
-    if tf is None:
-        raise MissingDependencyError(
-            "TensorFlow no esta instalado. Instala las dependencias antes de ejecutar la app."
-        )
+    """Carga una vez los pesos CUDA que usan imagen, foto y camara en vivo."""
+    if not CUDA_WEIGHTS_PATH.exists():
+        raise FileNotFoundError("No se encontro models/cuda_weights.bin. Ejecuta primero python -m src.train.")
 
-    load_errors = []
-    for model_path in MODEL_CANDIDATES:
-        if not model_path.exists():
-            continue
+    with CUDA_WEIGHTS_PATH.open("rb") as binary_file:
+        magic, input_dim, hidden_1, hidden_2 = struct.unpack("<8sIII", binary_file.read(20))
+        expected = (IMAGE_SIZE[0] * IMAGE_SIZE[1], HIDDEN_LAYER_1, HIDDEN_LAYER_2)
+        if magic.rstrip(b"\0") != b"CUDAWTS" or (input_dim, hidden_1, hidden_2) != expected:
+            raise ValueError("Los pesos CUDA no coinciden con la arquitectura actual.")
 
-        try:
-            return tf.saved_model.load(str(model_path)), model_path
-        except Exception as exc:  # pragma: no cover - depends on local model files.
-            load_errors.append(f"{model_path}: {exc}")
+        def read_array(size: int) -> np.ndarray:
+            return np.frombuffer(binary_file.read(size * 4), dtype="<f4").copy()
 
-    if load_errors:
-        details = "\n".join(load_errors)
-        raise RuntimeError(f"No fue posible cargar los modelos disponibles:\n{details}")
-
-    candidates = ", ".join(str(path) for path in MODEL_CANDIDATES)
-    raise FileNotFoundError(f"No se encontro un modelo entrenado en: {candidates}")
+        w1 = read_array(input_dim * hidden_1).reshape(input_dim, hidden_1)
+        b1 = read_array(hidden_1)
+        w2 = read_array(hidden_1 * hidden_2).reshape(hidden_1, hidden_2)
+        b2 = read_array(hidden_2)
+        w3 = read_array(hidden_2).reshape(hidden_2, 1)
+        b3 = read_array(1)
+    return CudaMlpInference(w1, b1, w2, b2, w3, b3), CUDA_WEIGHTS_PATH
 
 
 def decode_image_bytes(image_bytes: bytes) -> np.ndarray:
     if cv2 is None:
-        raise MissingDependencyError(
-            "OpenCV no esta instalado. Instala opencv-python para procesar imagenes."
-        )
-
-    image_buffer = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(image_buffer, cv2.IMREAD_COLOR)
+        raise MissingDependencyError("OpenCV no esta instalado.")
+    image = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
-        raise ValueError("La imagen no pudo leerse. Prueba con un archivo JPG, PNG, BMP o WEBP.")
+        raise ValueError("La imagen no pudo leerse. Prueba con JPG, PNG, BMP o WEBP.")
     return image
 
 
-def decode_uploaded_image(uploaded_file) -> np.ndarray:
-    return decode_image_bytes(uploaded_file.getvalue())
-
-
-def _apply_project_crop(gray_image: np.ndarray) -> np.ndarray:
-    if PREPROCESSING_STRATEGY == "lower_face":
-        if crop_lower_face is None:
-            raise MissingDependencyError("No se pudo cargar el recorte lower_face del proyecto.")
-        return crop_lower_face(gray_image)
-
-    if PREPROCESSING_STRATEGY == "center":
-        if _center_crop is None:
-            raise MissingDependencyError("No se pudo cargar el recorte centrado del proyecto.")
-        return _center_crop(gray_image)
-
-    if PREPROCESSING_STRATEGY == "full":
-        return gray_image
-
-    raise ValueError(f"Estrategia de preprocesamiento no soportada: {PREPROCESSING_STRATEGY}")
-
-
 def preprocess_image_array(image_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    if cv2 is None:
-        raise MissingDependencyError(
-            "OpenCV no esta instalado. Instala opencv-python para procesar imagenes."
-        )
-
-    if image_bgr.ndim == 2:
-        gray = image_bgr
-    else:
-        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-
-    gray_crop = _apply_project_crop(gray)
-    blurred = cv2.GaussianBlur(gray_crop, BLUR_KERNEL, 0)
-    resized = cv2.resize(blurred, IMAGE_SIZE)
-    normalized = resized.astype("float32") / 255.0
-    input_vector = normalized.flatten().reshape(1, -1)
-    return input_vector, normalized
+    """Reutiliza exactamente el preprocesamiento compartido con el entrenamiento."""
+    if _project_preprocess_image_array is None:
+        raise MissingDependencyError("No se pudo cargar el preprocesamiento del proyecto.")
+    return _project_preprocess_image_array(image_bgr)
 
 
 def bgr_to_rgb(image_bgr: np.ndarray) -> np.ndarray:
     if cv2 is None:
-        raise MissingDependencyError(
-            "OpenCV no esta instalado. Instala opencv-python para procesar imagenes."
-        )
+        raise MissingDependencyError("OpenCV no esta instalado.")
     return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
 
 def predict_probability(model, input_vector: np.ndarray) -> float:
-    if tf is None:
-        raise MissingDependencyError(
-            "TensorFlow no esta instalado. Instala las dependencias antes de ejecutar la app."
-        )
-
-    tensor = tf.convert_to_tensor(input_vector, dtype=tf.float32)
-    output = model(tensor).numpy().reshape(-1)
-    return float(output[0])
+    """Devuelve la salida sigmoid: probabilidad de que la imagen sea un bostezo."""
+    return float(model.predict(input_vector).reshape(-1)[0])
 
 
-def classify_probability(probability: float, threshold: float) -> str:
+def classify_probability(probability: float, threshold: float = 0.5) -> str:
     return "Bostezo detectado" if probability >= threshold else "No se detecta bostezo"
-

@@ -1,38 +1,11 @@
 # Entrenamiento
 
-El modelo principal es un MLP, o perceptron multicapa, usado para clasificacion binaria supervisada. Esta implementacion usa TensorFlow puro, sin Keras.
+El modelo principal es `4096 -> 64 -> 32 -> 1`, con ReLU en las capas ocultas y sigmoid en la salida. CUDA entrena el modelo final; CPU ejecuta la misma cantidad de trabajo para medir speedup.
 
-## Arquitectura
+La validacion se revisa despues de cada epoca. EarlyStopping monitorea `val_loss`, usa paciencia 8 y restaura los pesos de la mejor epoca antes de evaluar prueba y exportar `models/cuda_weights.bin`.
 
-```text
-Entrada: 6400 caracteristicas
-Capa oculta 1: 256 neuronas, ReLU
-Capa oculta 2: 64 neuronas, ReLU
-Salida: 1 neurona, Sigmoid
+```bash
+python -m src.train
 ```
 
-## Implementacion sin Keras
-
-El modelo se define con `tf.Variable` para pesos y sesgos. La propagacion hacia adelante usa operaciones de TensorFlow:
-
-- `tf.matmul` para multiplicaciones matriciales.
-- `tf.nn.relu` para las capas ocultas.
-- `tf.sigmoid` para la salida binaria.
-
-El entrenamiento se realiza con `tf.GradientTape`, que calcula los gradientes de la funcion de perdida respecto a los pesos. Luego se actualizan los parametros con una implementacion propia del optimizador Adam.
-
-Se aplica regularizacion L2 ligera sobre los pesos para reducir sobreajuste. El conjunto de entrenamiento se carga con aumentacion de datos en memoria; validacion y prueba se mantienen sin aumentacion para medir el rendimiento real.
-
-## Funciones de activacion
-
-`ReLU` se usa en las capas ocultas porque permite aprender relaciones no lineales y reduce problemas de gradientes pequenos en comparacion con activaciones saturantes.
-
-`Sigmoid` se usa en la salida porque produce un valor entre `0` y `1`, interpretable como probabilidad de bostezo.
-
-## Epocas
-
-Una epoca corresponde a una pasada completa del modelo sobre el conjunto de entrenamiento. Pocas epocas pueden causar subentrenamiento. Demasiadas epocas pueden causar sobreajuste. Por eso se aplica Early Stopping manual, deteniendo el entrenamiento cuando la perdida de validacion deja de mejorar.
-
-## CUDA
-
-TensorFlow puede usar GPU con CUDA cuando el entorno esta configurado correctamente. El codigo no fuerza el uso de GPU; TensorFlow la detecta automaticamente si esta disponible.
+No hay un segundo comando de entrenamiento. El reporte de cada corrida queda en `metrics/cuda_training.md`.

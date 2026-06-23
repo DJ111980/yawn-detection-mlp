@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 from collections import defaultdict
 from pathlib import Path
 
@@ -8,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET_DIR = PROJECT_ROOT / "datasets"
 METRICS_DIR = PROJECT_ROOT / "metrics"
-CSV_PATH = METRICS_DIR / "dataset_summary.csv"
+REPORT_PATH = METRICS_DIR / "dataset_summary.md"
 PLOT_PATH = METRICS_DIR / "dataset_distribution.png"
 
 SPLITS = ("train", "validation", "test")
@@ -31,35 +30,24 @@ def collect_counts() -> dict[str, dict[str, int]]:
     return counts
 
 
-def write_csv(counts: dict[str, dict[str, int]]) -> None:
+def write_report(counts: dict[str, dict[str, int]]) -> None:
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     total_images = sum(sum(classes.values()) for classes in counts.values())
 
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(
-            csv_file,
-            fieldnames=[
-                "split",
-                "class",
-                "count",
-                "percentage_in_split",
-                "percentage_total",
-            ],
-        )
-        writer.writeheader()
-
-        for split, class_counts in counts.items():
-            split_total = sum(class_counts.values())
-            for class_name, count in class_counts.items():
-                writer.writerow(
-                    {
-                        "split": split,
-                        "class": class_name,
-                        "count": count,
-                        "percentage_in_split": round((count / split_total * 100) if split_total else 0, 2),
-                        "percentage_total": round((count / total_images * 100) if total_images else 0, 2),
-                    }
-                )
+    class_totals = {class_name: sum(counts[split][class_name] for split in SPLITS) for class_name in CLASSES}
+    rows = "\n".join(
+        f"| {split} | {counts[split]['no_yawn']} | {counts[split]['yawn']} | {sum(counts[split].values())} |"
+        for split in SPLITS
+    )
+    REPORT_PATH.write_text(
+        "# Distribucion del dataset\n\n"
+        "| Division | No bostezo | Bostezo | Total |\n|---|---:|---:|---:|\n"
+        f"{rows}\n\n"
+        f"**Total:** {total_images} imagenes.  \\n"
+        f"**Total no_yawn:** {class_totals['no_yawn']}.  \\n"
+        f"**Total yawn:** {class_totals['yawn']}.\n",
+        encoding="utf-8",
+    )
 
 
 def write_plot(counts: dict[str, dict[str, int]]) -> bool:
@@ -123,7 +111,7 @@ def print_summary(counts: dict[str, dict[str, int]], plot_created: bool) -> None
         status = "cumple" if class_totals[class_name] >= minimum_per_class else "no cumple"
         print(f"Minimo de {minimum_per_class} imagenes para {class_name}: {status}")
 
-    print(f"CSV generado: {CSV_PATH}")
+    print(f"Resumen generado: {REPORT_PATH}")
     if plot_created:
         print(f"Grafica generada: {PLOT_PATH}")
     else:
@@ -132,7 +120,7 @@ def print_summary(counts: dict[str, dict[str, int]], plot_created: bool) -> None
 
 def main() -> None:
     counts = collect_counts()
-    write_csv(counts)
+    write_report(counts)
     plot_created = write_plot(counts)
     print_summary(counts, plot_created)
 

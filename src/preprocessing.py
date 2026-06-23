@@ -3,12 +3,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .config import AUGMENT_TRAINING, CLASS_TO_LABEL, IMAGE_SIZE, PREPROCESSING_STRATEGY
+from .config import AUGMENT_TRAINING, CLASS_TO_LABEL, IMAGE_SIZE, OPENMP_INPUT_SIZE, PREPROCESSING_STRATEGY
 
 
 VALID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 BLUR_KERNEL = (3, 3)
+GAUSSIAN_3X3 = np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype="float32") / 16.0
 
 
 def _largest_face(faces):
@@ -115,10 +116,33 @@ def _augment_crop(gray_crop: np.ndarray) -> list[np.ndarray]:
 
 
 def _vectorize_crop(gray_crop: np.ndarray, image_size: tuple[int, int]) -> np.ndarray:
-    blurred = cv2.GaussianBlur(gray_crop, BLUR_KERNEL, 0)
-    resized = cv2.resize(blurred, image_size)
+    standardized_crop = cv2.resize(gray_crop, OPENMP_INPUT_SIZE, interpolation=cv2.INTER_AREA)
+    blurred = cv2.filter2D(
+        standardized_crop.astype("float32"),
+        cv2.CV_32F,
+        GAUSSIAN_3X3,
+        borderType=cv2.BORDER_REPLICATE,
+    )
+    output_width, output_height = image_size
+    source_height, source_width = blurred.shape
+    x_positions = np.linspace(0, source_width - 1, output_width, dtype="float32")
+    y_positions = np.linspace(0, source_height - 1, output_height, dtype="float32")
+    x0, y0 = x_positions.astype("int32"), y_positions.astype("int32")
+    x1, y1 = np.minimum(x0 + 1, source_width - 1), np.minimum(y0 + 1, source_height - 1)
+    wx, wy = x_positions - x0, y_positions - y0
+    top = blurred[y0[:, None], x0] * (1 - wx) + blurred[y0[:, None], x1] * wx
+    bottom = blurred[y1[:, None], x0] * (1 - wx) + blurred[y1[:, None], x1] * wx
+    resized = top * (1 - wy[:, None]) + bottom * wy[:, None]
     normalized = resized.astype("float32") / 255.0
     return normalized.flatten()
+
+
+def preprocess_image_array(image_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Apply the exact project preprocessing to an in-memory BGR image."""
+    gray = image_bgr if image_bgr.ndim == 2 else cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    crop = _load_preprocessed_crops_from_gray(gray, PREPROCESSING_STRATEGY)
+    vector = _vectorize_crop(crop, IMAGE_SIZE)
+    return vector.reshape(1, -1), vector.reshape(IMAGE_SIZE)
 
 
 def _load_preprocessed_crops(image_path: str | Path, strategy: str) -> np.ndarray:
@@ -128,6 +152,10 @@ def _load_preprocessed_crops(image_path: str | Path, strategy: str) -> np.ndarra
         raise ValueError(f"No se pudo leer la imagen: {image_path}")
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return _load_preprocessed_crops_from_gray(gray, strategy)
+
+
+def _load_preprocessed_crops_from_gray(gray: np.ndarray, strategy: str) -> np.ndarray:
     if strategy == "lower_face":
         return crop_lower_face(gray)
     if strategy == "center":

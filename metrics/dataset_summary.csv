@@ -1,7 +1,0 @@
-split,class,count,percentage_in_split,percentage_total
-train,no_yawn,220,50.0,34.92
-train,yawn,220,50.0,34.92
-validation,no_yawn,47,50.0,7.46
-validation,yawn,47,50.0,7.46
-test,no_yawn,48,50.0,7.62
-test,yawn,48,50.0,7.62

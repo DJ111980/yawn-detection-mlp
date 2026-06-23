@@ -1,20 +1,12 @@
 # Evaluacion
 
-El modelo se evalua con el conjunto de prueba, que no debe usarse durante entrenamiento ni validacion.
+El conjunto `validation` decide la mejor epoca con `val_loss`; el conjunto `test` se usa una sola vez al final para reportar accuracy, precision, recall, F1 y matriz de confusion.
 
-## Metricas
+Despues de una corrida manual se consultan:
 
-- Accuracy: porcentaje total de predicciones correctas.
-- Precision: proporcion de predicciones positivas que realmente eran bostezos.
-- Recall: proporcion de bostezos reales que el modelo detecto.
-- F1 score: promedio armonico entre precision y recall.
-- Matriz de confusion: tabla de aciertos y errores por clase.
+- `metrics/results.md`
+- `metrics/confusion_matrix.png`
+- `metrics/loss.png`
+- `metrics/accuracy.png`
 
-## Validacion cruzada
-
-La validacion cruzada divide el conjunto de entrenamiento en varios folds. En cada iteracion se entrena con una parte y se valida con otra. Esto permite estimar mejor la capacidad de generalizacion del modelo y reducir la dependencia de una sola division de datos.
-
-El proyecto guarda:
-
-- `metrics/cross_validation_results.csv`
-- `metrics/cross_validation_summary.csv`
+Las curvas diferencian entrenamiento y validacion. Una mejora en entrenamiento que empeora validacion es una senal de sobreajuste.

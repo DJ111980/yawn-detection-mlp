@@ -11,9 +11,9 @@ Para integrarlo en backend, se debe aplicar exactamente el mismo preprocesamient
 1. Convertir frame o imagen a escala de grises.
 2. Detectar rostro y recortar la region de la boca.
 3. Aplicar suavizado Gaussiano.
-4. Redimensionar a `80x80`.
+4. Redimensionar a `64x64`.
 5. Normalizar dividiendo entre `255`.
-6. Aplanar a vector de `6400` caracteristicas.
+6. Aplanar a vector de `4096` caracteristicas.
 7. Enviar al modelo.
 
 ## Interpretacion de salida

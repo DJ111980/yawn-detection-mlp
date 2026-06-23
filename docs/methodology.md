@@ -12,9 +12,9 @@ La responsabilidad de entrenamiento cubre el preprocesamiento, construccion del 
 1. Recibir el dataset etiquetado.
 2. Revisar distribucion de clases.
 3. Aplicar filtros de preprocesamiento.
-4. Redimensionar las imagenes a `80x80`.
+4. Redimensionar las imagenes a `64x64`.
 5. Normalizar pixeles de `0-255` a `0-1`.
-6. Convertir cada imagen en un vector de `6400` caracteristicas.
+6. Convertir cada imagen en un vector de `4096` caracteristicas.
 7. Entrenar un MLP con TensorFlow.
 8. Evaluar con accuracy, precision, recall, F1 score y matriz de confusion.
 9. Aplicar validacion cruzada.
